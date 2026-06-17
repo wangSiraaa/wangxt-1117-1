@@ -181,8 +181,7 @@ async function main() {
   }
 
   console.log('数据库初始化完成！');
-  console.log(`数据文件位置: ${require('path').join(__dirname, '..', '..', 'data', 'aquaculture.db')}`);
   console.log(`已预置 ${drugs.length} 种药品，${ponds.length} 个池塘，${drugSubstitutes.length} 组禁药替代方案`);
 }
 
-main().catch(console.error);
+module.exports = main;

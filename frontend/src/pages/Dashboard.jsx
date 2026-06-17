@@ -21,7 +21,7 @@ import {
   ExperimentOutlined,
   LockOutlined,
   UnlockOutlined,
-  FishOutlined,
+  SkinOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
   WarningFilled,
@@ -129,7 +129,7 @@ export default function Dashboard() {
           type: 'harvest',
           tag:
             h.status === 'completed' ? (
-              <Tag color="green" icon={<FishOutlined />}>
+              <Tag color="green" icon={<SkinOutlined />}>
                 出塘完成
               </Tag>
             ) : h.status === 'planned' ? (
@@ -138,7 +138,7 @@ export default function Dashboard() {
               <Tag color="default">计划取消</Tag>
             ),
           color: h.status === 'completed' ? 'green' : 'blue',
-          dot: <FishOutlined />,
+          dot: <SkinOutlined />,
           desc: `${h.plan_no}｜${h.pond_name}｜${h.plan_date}${
             h.recalculated_from_id ? '｜已重算' : ''
           }`
@@ -167,7 +167,7 @@ export default function Dashboard() {
       label: '池塘总数',
       value: summary.pond_count,
       cls: '',
-      icon: <FishOutlined />
+      icon: <SkinOutlined />
     },
     {
       label: '锁定池塘',
@@ -282,7 +282,7 @@ export default function Dashboard() {
     {
       title: '出塘执行',
       desc: '停药期冲突预警 + 一键重算',
-      icon: <FishOutlined />,
+      icon: <SkinOutlined />,
       status: 'finish',
       stat: summary.harvest_completed_count || '-'
     }

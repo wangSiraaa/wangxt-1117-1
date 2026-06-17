@@ -11,68 +11,71 @@ const dbPath = path.join(dbDir, 'aquaculture.db');
 
 let SQL = null;
 let db = null;
+let _skipSave = false;
+let _inTransaction = false;
 
 async function initDatabase() {
   if (db) return db;
   SQL = await initSqlJs();
-  let fileBuffer = null;
   if (fs.existsSync(dbPath)) {
-    fileBuffer = fs.readFileSync(dbPath);
+    const fileBuffer = fs.readFileSync(dbPath);
     db = new SQL.Database(fileBuffer);
   } else {
     db = new SQL.Database();
   }
+  db.run('PRAGMA journal_mode=WAL');
+  db.run('PRAGMA foreign_keys=ON');
   return db;
 }
 
 function saveDatabase() {
   if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
+    try {
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(dbPath, buffer);
+    } catch (e) {
+      console.error('Failed to save database:', e.message);
+    }
   }
 }
 
-let _skipSave = false;
-
-function _normalizeParams(params) {
-  if (!params) return params;
+function _norm(params) {
+  if (!params) return [];
   return params.map((v) => (v === undefined ? null : v));
 }
 
-function run(sql, params = []) {
+function run(sql, params) {
   if (!db) throw new Error('Database not initialized');
-  const normParams = _normalizeParams(params);
-  let stmt;
+  const p = _norm(params || []);
   try {
-    stmt = db.prepare(sql);
-    if (normParams && normParams.length > 0) {
-      stmt.bind(normParams);
-    }
-    stmt.step();
+    db.run(sql, p);
   } catch (e) {
     throw e instanceof Error ? e : new Error(String(e));
-  } finally {
-    if (stmt) stmt.free();
   }
   const changes = db.getRowsModified() || 0;
-  const lastInsertRowid =
-    db.exec('SELECT last_insert_rowid() as id')[0]?.values?.[0]?.[0] ?? 0;
+  let lastInsertRowid = 0;
+  try {
+    const rows = db.exec('SELECT last_insert_rowid() as id');
+    if (rows && rows.length > 0 && rows[0].values && rows[0].values.length > 0) {
+      lastInsertRowid = rows[0].values[0][0] || 0;
+    }
+  } catch (_) {}
   if (!_skipSave) {
     saveDatabase();
   }
   return { changes, lastInsertRowid };
 }
 
-function all(sql, params = []) {
+function all(sql, params) {
   if (!db) throw new Error('Database not initialized');
-  const normParams = _normalizeParams(params);
-  let stmt;
+  const p = _norm(params || []);
   const results = [];
+  let stmt;
   try {
     stmt = db.prepare(sql);
-    if (normParams && normParams.length > 0) {
-      stmt.bind(normParams);
+    if (p.length > 0) {
+      stmt.bind(p);
     }
     while (stmt.step()) {
       results.push(stmt.getAsObject());
@@ -80,39 +83,53 @@ function all(sql, params = []) {
   } catch (e) {
     throw e instanceof Error ? e : new Error(String(e));
   } finally {
-    if (stmt) stmt.free();
+    if (stmt) {
+      try { stmt.free(); } catch (_) {}
+    }
   }
   return results;
 }
 
-function get(sql, params = []) {
+function get(sql, params) {
   const rows = all(sql, params);
   return rows.length > 0 ? rows[0] : undefined;
 }
 
 function transaction(fn) {
   if (!db) throw new Error('Database not initialized');
+  if (_inTransaction) {
+    return fn({ run, all, get });
+  }
   const prevSkip = _skipSave;
   _skipSave = true;
+  _inTransaction = true;
   try {
-    db.exec('BEGIN TRANSACTION');
+    db.run('BEGIN TRANSACTION');
     const result = fn({ run, all, get });
-    db.exec('COMMIT');
+    db.run('COMMIT');
+    _inTransaction = false;
+    _skipSave = prevSkip;
     saveDatabase();
     return result;
   } catch (e) {
-    try { db.exec('ROLLBACK'); } catch (_) {}
+    _inTransaction = false;
+    _skipSave = prevSkip;
+    try { db.run('ROLLBACK'); } catch (_) {}
     saveDatabase();
     throw e;
-  } finally {
-    _skipSave = prevSkip;
   }
 }
 
 function exec(sql) {
   if (!db) throw new Error('Database not initialized');
-  db.exec(sql);
-  saveDatabase();
+  try {
+    db.exec(sql);
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+  if (!_skipSave) {
+    saveDatabase();
+  }
 }
 
 module.exports = {

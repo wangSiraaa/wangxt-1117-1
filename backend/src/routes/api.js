@@ -561,17 +561,17 @@ router.post('/medications', (req, res) => {
       return res.status(400).json({ success: false, message: `池塘【${pond.pond_name}】已被锁定，无法登记用药` });
     }
 
+    if (drug.is_banned === 1) {
+      const substitutes = getDrugSubstitutes(drug_id);
+      return res.status(400).json({
+        success: false,
+        message: `药品【${drug.drug_name}】为禁用药物，严禁使用！`,
+        data: { banned_drug: drug, substitutes }
+      });
+    }
+
     let hasWarning = false;
     let warningData = null;
-    if (drug.is_banned === 1) {
-      hasWarning = true;
-      const substitutes = getDrugSubstitutes(drug_id);
-      warningData = {
-        banned_drug: drug,
-        substitutes,
-        message: `所选药品【${drug.drug_name}】为禁用药物，建议使用替代方案`
-      };
-    }
 
     if (expected_harvest_date && drug.withdrawal_period > 0) {
       const medDate = dayjs(medication_date || dayjs().format('YYYY-MM-DD'));
@@ -640,17 +640,17 @@ router.post('/medications/:id/resubmit', (req, res) => {
       return res.status(400).json({ success: false, message: '池塘已锁定，无法重新提交' });
     }
 
+    if (drug.is_banned === 1) {
+      const substitutes = getDrugSubstitutes(newDrugId);
+      return res.status(400).json({
+        success: false,
+        message: `药品【${drug.drug_name}】为禁用药物，严禁使用！`,
+        data: { banned_drug: drug, substitutes }
+      });
+    }
+
     let hasWarning = false;
     let warningData = null;
-    if (drug.is_banned === 1) {
-      hasWarning = true;
-      const substitutes = getDrugSubstitutes(newDrugId);
-      warningData = {
-        banned_drug: drug,
-        substitutes,
-        message: `所选药品【${drug.drug_name}】为禁用药物，建议使用替代方案`
-      };
-    }
 
     const newMedDate = medication_date || original.medication_date;
     const newHarvestDate = expected_harvest_date || original.expected_harvest_date;
@@ -796,7 +796,7 @@ router.post('/inspections', (req, res) => {
     let unlockCheckTriggered = null;
 
     transaction(() => {
-      run(
+      const insInfo = run(
         `INSERT INTO inspection_records
           (inspection_no, pond_id, sample_date, inspector, inspection_items,
            inspection_result, unqualified_items, remark, is_reinspection, parent_inspection_id, reinspection_status)
@@ -808,6 +808,7 @@ router.post('/inspections', (req, res) => {
           is_reinspection ? (inspection_result === 'qualified' ? 'passed' : 'failed') : null
         ]
       );
+      const inspectionId = insInfo.lastInsertRowid;
 
       if (inspection_result === 'unqualified') {
         const lockReason = `${is_reinspection ? '复检' : '抽检'}不合格：${unqualified_items || '多项指标不合格'}，编号：${inspection_no}`;
@@ -816,10 +817,8 @@ router.post('/inspections', (req, res) => {
         const lockDate = dayjs().format('YYYY-MM-DD HH:mm:ss');
         run(
           `INSERT INTO pond_lock_records (pond_id, lock_type, lock_reason, lock_date, inspection_id, operator) VALUES (?, ?, ?, ?, ?, ?)`,
-          [pond_id, is_reinspection ? 'reinspection_unqualified' : 'inspection_unqualified', lockReason, lockDate, null, inspector]
+          [pond_id, is_reinspection ? 'reinspection_unqualified' : 'inspection_unqualified', lockReason, lockDate, inspectionId, inspector]
         );
-        const latestLockId = get('SELECT last_insert_rowid() as id').id;
-        run(`UPDATE pond_lock_records SET inspection_id = ? WHERE id = ?`, [latestLockId, latestLockId]);
       }
 
       if (is_reinspection && inspection_result === 'qualified' && parent_inspection_id) {

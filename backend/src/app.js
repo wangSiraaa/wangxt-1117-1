@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { initDatabase } = require('./database/db');
+const initTables = require('./database/init');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -25,7 +26,7 @@ app.use((err, req, res, next) => {
 async function start() {
   console.log('正在初始化数据库...');
   await initDatabase();
-  console.log('数据库初始化完成');
+  await initTables();
   app.listen(PORT, () => {
     console.log(`========================================`);
     console.log(`  水产养殖用药记录系统 - 后端服务`);

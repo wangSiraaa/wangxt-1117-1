@@ -30,4 +30,6 @@ export const updateHarvestStatus = (id, status) =>
 export const recalculateHarvest = (id, data) =>
   request.post(`/harvests/${id}/recalculate`, data || {});
 
+export const getAudits = () => request.get('/medications');
+
 export const getSummary = () => request.get('/statistics/summary');
