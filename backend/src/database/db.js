@@ -33,29 +33,55 @@ function saveDatabase() {
   }
 }
 
+let _skipSave = false;
+
+function _normalizeParams(params) {
+  if (!params) return params;
+  return params.map((v) => (v === undefined ? null : v));
+}
+
 function run(sql, params = []) {
   if (!db) throw new Error('Database not initialized');
-  const stmt = db.prepare(sql);
-  if (params && params.length > 0) {
-    stmt.bind(params);
+  const normParams = _normalizeParams(params);
+  let stmt;
+  try {
+    stmt = db.prepare(sql);
+    if (normParams && normParams.length > 0) {
+      stmt.bind(normParams);
+    }
+    stmt.step();
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  } finally {
+    if (stmt) stmt.free();
   }
-  stmt.step();
-  stmt.free();
-  saveDatabase();
-  return { changes: db.getRowsModified() || 0, lastInsertRowid: db.exec('SELECT last_insert_rowid() as id')[0]?.values[0]?.[0] };
+  const changes = db.getRowsModified() || 0;
+  const lastInsertRowid =
+    db.exec('SELECT last_insert_rowid() as id')[0]?.values?.[0]?.[0] ?? 0;
+  if (!_skipSave) {
+    saveDatabase();
+  }
+  return { changes, lastInsertRowid };
 }
 
 function all(sql, params = []) {
   if (!db) throw new Error('Database not initialized');
-  const stmt = db.prepare(sql);
-  if (params && params.length > 0) {
-    stmt.bind(params);
-  }
+  const normParams = _normalizeParams(params);
+  let stmt;
   const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
+  try {
+    stmt = db.prepare(sql);
+    if (normParams && normParams.length > 0) {
+      stmt.bind(normParams);
+    }
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  } finally {
+    if (stmt) stmt.free();
   }
-  stmt.free();
   return results;
 }
 
@@ -65,14 +91,21 @@ function get(sql, params = []) {
 }
 
 function transaction(fn) {
-  run('BEGIN TRANSACTION');
+  if (!db) throw new Error('Database not initialized');
+  const prevSkip = _skipSave;
+  _skipSave = true;
   try {
+    db.exec('BEGIN TRANSACTION');
     const result = fn({ run, all, get });
-    run('COMMIT');
+    db.exec('COMMIT');
+    saveDatabase();
     return result;
   } catch (e) {
-    run('ROLLBACK');
+    try { db.exec('ROLLBACK'); } catch (_) {}
+    saveDatabase();
     throw e;
+  } finally {
+    _skipSave = prevSkip;
   }
 }
 

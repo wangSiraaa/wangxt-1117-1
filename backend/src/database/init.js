@@ -15,6 +15,7 @@ async function main() {
       stock_quantity INTEGER,
       locked INTEGER DEFAULT 0,
       lock_reason TEXT,
+      last_unlock_date TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
@@ -31,6 +32,17 @@ async function main() {
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS drug_substitutes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      banned_drug_id INTEGER NOT NULL,
+      substitute_drug_id INTEGER NOT NULL,
+      substitute_reason TEXT,
+      priority INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (banned_drug_id) REFERENCES drugs(id),
+      FOREIGN KEY (substitute_drug_id) REFERENCES drugs(id)
+    );
+
     CREATE TABLE IF NOT EXISTS medication_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       record_no TEXT UNIQUE NOT NULL,
@@ -43,9 +55,15 @@ async function main() {
       operator TEXT NOT NULL,
       remark TEXT,
       audit_status TEXT DEFAULT 'pending',
+      expected_harvest_date TEXT,
+      alternative_drug_ids TEXT,
+      pond_area REAL,
+      original_medication_id INTEGER,
+      resubmit_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (pond_id) REFERENCES ponds(id),
-      FOREIGN KEY (drug_id) REFERENCES drugs(id)
+      FOREIGN KEY (drug_id) REFERENCES drugs(id),
+      FOREIGN KEY (original_medication_id) REFERENCES medication_records(id)
     );
 
     CREATE TABLE IF NOT EXISTS audit_records (
@@ -54,6 +72,7 @@ async function main() {
       auditor TEXT NOT NULL,
       audit_result TEXT NOT NULL,
       audit_opinion TEXT,
+      suggested_substitutes TEXT,
       audit_date TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (medication_id) REFERENCES medication_records(id)
     );
@@ -68,8 +87,30 @@ async function main() {
       inspection_result TEXT NOT NULL,
       unqualified_items TEXT,
       remark TEXT,
+      is_reinspection INTEGER DEFAULT 0,
+      parent_inspection_id INTEGER,
+      reinspection_status TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      FOREIGN KEY (pond_id) REFERENCES ponds(id)
+      FOREIGN KEY (pond_id) REFERENCES ponds(id),
+      FOREIGN KEY (parent_inspection_id) REFERENCES inspection_records(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS pond_lock_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pond_id INTEGER NOT NULL,
+      lock_type TEXT NOT NULL,
+      lock_reason TEXT,
+      lock_date TEXT NOT NULL,
+      unlock_date TEXT,
+      unlock_conditions TEXT,
+      unlock_check_status TEXT,
+      inspection_id INTEGER,
+      medication_id INTEGER,
+      operator TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (pond_id) REFERENCES ponds(id),
+      FOREIGN KEY (inspection_id) REFERENCES inspection_records(id),
+      FOREIGN KEY (medication_id) REFERENCES medication_records(id)
     );
 
     CREATE TABLE IF NOT EXISTS harvest_plans (
@@ -80,9 +121,11 @@ async function main() {
       plan_quantity INTEGER,
       operator TEXT,
       status TEXT DEFAULT 'planned',
+      recalculated_from_id INTEGER,
       remark TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      FOREIGN KEY (pond_id) REFERENCES ponds(id)
+      FOREIGN KEY (pond_id) REFERENCES ponds(id),
+      FOREIGN KEY (recalculated_from_id) REFERENCES harvest_plans(id)
     );
   `);
 
@@ -121,9 +164,25 @@ async function main() {
     } catch (e) {}
   }
 
+  const drugSubstitutes = [
+    [4, 1, '青霉素钾为光谱抗菌药，可替代孔雀石绿用于细菌性疾病防治', 1],
+    [4, 6, '聚维酮碘为外用消毒剂，安全性高，可替代孔雀石绿用于体表消毒', 2],
+    [5, 2, '土霉素为广谱抗生素，可替代氯霉素用于细菌性感染治疗', 1],
+    [5, 7, '硫酸铜可用于体外寄生虫和真菌防治，安全性优于氯霉素', 2]
+  ];
+
+  for (const item of drugSubstitutes) {
+    try {
+      run(
+        `INSERT OR IGNORE INTO drug_substitutes (banned_drug_id, substitute_drug_id, substitute_reason, priority) VALUES (?, ?, ?, ?)`,
+        item
+      );
+    } catch (e) {}
+  }
+
   console.log('数据库初始化完成！');
   console.log(`数据文件位置: ${require('path').join(__dirname, '..', '..', 'data', 'aquaculture.db')}`);
-  console.log(`已预置 ${drugs.length} 种药品，${ponds.length} 个池塘`);
+  console.log(`已预置 ${drugs.length} 种药品，${ponds.length} 个池塘，${drugSubstitutes.length} 组禁药替代方案`);
 }
 
 main().catch(console.error);
