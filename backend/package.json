@@ -1,0 +1,20 @@
+{
+  "name": "aquaculture-medication-backend",
+  "version": "1.0.0",
+  "description": "水产养殖用药记录系统 - 后端",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "init-db": "node src/database/init.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "dayjs": "^1.11.10"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: aqua-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    volumes:
+      - aqua-data:/app/data
+    networks:
+      - aqua-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: aqua-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - aqua-net
+
+networks:
+  aqua-net:
+    driver: bridge
+
+volumes:
+  aqua-data:
+    driver: local
